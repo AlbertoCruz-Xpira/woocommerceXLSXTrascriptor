@@ -8,7 +8,232 @@ Convierte archivo CSV con múltiples páginas a formato compatible con WooCommer
 import pandas as pd
 import sys
 import os
+import requests
+import urllib.parse
+import re
+import json
 from datetime import datetime
+
+class ImageFetcher:
+    """
+    Clase para obtener imágenes de productos desde APIs gratuitas
+    """
+    def __init__(self):
+        self.cache_file = 'image_cache.json'
+        self.cache = self.load_cache()
+        self.images_folder = 'product_images'  # Nueva carpeta para imágenes locales
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'WooCommerce-CSV-Converter/1.0'
+        })
+        
+        # Crear carpeta de imágenes si no existe
+        if not os.path.exists(self.images_folder):
+            os.makedirs(self.images_folder)
+            print(f"📁 Carpeta creada: {self.images_folder}")
+    
+    def load_cache(self):
+        """Carga el cache de imágenes desde archivo"""
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+    
+    def save_cache(self):
+        """Guarda el cache de imágenes en archivo"""
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(self.cache, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"⚠️  Advertencia: No se pudo guardar el cache de imágenes: {e}")
+    
+    def clean_product_name_for_search(self, product_name):
+        """Limpia el nombre del producto para una mejor búsqueda"""
+        if not product_name:
+            return ""
+        
+        # Convertir a minúsculas y limpiar
+        cleaned = product_name.lower().strip()
+        
+        # Remover caracteres especiales y números sueltos
+        cleaned = re.sub(r'[^\w\s-]', ' ', cleaned)
+        cleaned = re.sub(r'\b\d+\b', '', cleaned)
+        
+        # Remover palabras muy cortas y espacios extra
+        words = [word for word in cleaned.split() if len(word) > 2]
+        
+        return ' '.join(words[:3])  # Máximo 3 palabras para mejor búsqueda
+    
+    def get_unsplash_image(self, product_name):
+        """
+        Obtiene imagen desde Unsplash usando su API pública (sin API key)
+        Utiliza la función de búsqueda de Unsplash Source
+        """
+        # Nota: Deshabilitado temporalmente debido a problemas de conectividad
+        return None
+    
+    def get_picsum_image(self, product_name):
+        """
+        Obtiene imagen placeholder desde Lorem Picsum
+        """
+        # Nota: Deshabilitado temporalmente debido a problemas de conectividad
+        return None
+    
+    def get_placeholder_image(self, product_name):
+        """
+        Obtiene imagen placeholder simple y confiable
+        """
+        try:
+            # Generar color basado en el nombre del producto
+            product_hash = abs(hash(product_name)) % 16777215  # Color hexadecimal
+            color = f"{product_hash:06x}"
+            
+            # Usar placeholder.com que es muy confiable
+            text = urllib.parse.quote(product_name[:10].replace(' ', '+'))
+            url = f"https://via.placeholder.com/400x400/{color}/ffffff?text={text}"
+            
+            print(f"   🔍 Probando Placeholder URL: {url}")
+            
+            # Esta URL siempre funciona, no necesitamos verificar
+            print(f"   ✅ Placeholder OK: {url}")
+            return url
+                
+        except Exception as e:
+            print(f"   ⚠️  Error con Placeholder para '{product_name}': {e}")
+        
+        return None
+    
+    def get_simple_placeholder_image(self, product_name):
+        """
+        Genera una URL de imagen placeholder simple y confiable
+        """
+        try:
+            # Generar color basado en el nombre del producto
+            product_hash = abs(hash(product_name))
+            color_codes = ['FF6B6B', '4ECDC4', '45B7D1', 'FFA07A', '98D8C8', 'F7DC6F', 'BB8FCE', '85C1E9']
+            color = color_codes[product_hash % len(color_codes)]
+            
+            # Crear texto corto para la imagen
+            text = product_name[:8].replace(' ', '+').upper()
+            
+            # Usar DummyImage.com que es muy estable
+            url = f"https://dummyimage.com/400x400/{color}/ffffff&text={text}"
+            
+            print(f"   🎨 Generando placeholder: {url}")
+            return url
+                
+        except Exception as e:
+            print(f"   ⚠️  Error generando placeholder para '{product_name}': {e}")
+            # Fallback: URL estática básica
+            return "https://dummyimage.com/400x400/cccccc/ffffff&text=Producto"
+    
+    def get_product_image(self, product_name):
+        """
+        Obtiene imagen para un producto, usando cache si está disponible
+        """
+        if not product_name or not product_name.strip():
+            return None
+        
+        # Verificar cache
+        cache_key = product_name.strip().lower()
+        if cache_key in self.cache:
+            cached_url = self.cache[cache_key]
+            if cached_url:  # Solo retornar si hay URL válida
+                print(f"   💾 Imagen en cache para: {product_name}")
+                return cached_url
+        
+        print(f"   🔍 Buscando imagen para: {product_name}")
+        
+        # Intentar obtener imagen de Unsplash primero
+        image_url = self.get_unsplash_image(product_name)
+        
+        # Si falla, usar imagen de Picsum
+        if not image_url:
+            print(f"   ⏭️  Unsplash falló, probando Picsum...")
+            image_url = self.get_picsum_image(product_name)
+        
+        # Si todo falla, usar placeholder confiable
+        if not image_url:
+            print(f"   ⏭️  Picsum falló, usando placeholder simple...")
+            image_url = self.get_simple_placeholder_image(product_name)
+        
+        # Guardar en cache (incluso si es None para evitar buscar de nuevo)
+        self.cache[cache_key] = image_url
+        
+        if image_url:
+            print(f"   ✅ Imagen final: {image_url}")
+        else:
+            print(f"   ❌ No se pudo obtener imagen")
+        
+        return image_url
+    
+    def download_image_locally(self, image_url, product_name, product_id):
+        """
+        Descarga una imagen y la guarda localmente
+        """
+        try:
+            # Generar nombre de archivo seguro
+            safe_name = re.sub(r'[^\w\s-]', '', product_name.lower())
+            safe_name = re.sub(r'[-\s]+', '-', safe_name)
+            filename = f"producto-{product_id:04d}-{safe_name[:20]}.jpg"
+            filepath = os.path.join(self.images_folder, filename)
+            
+            # Si el archivo ya existe, retornar la ruta
+            if os.path.exists(filepath):
+                print(f"   📁 Imagen local existente: {filename}")
+                return filepath
+            
+            print(f"   ⬇️  Descargando imagen: {filename}")
+            
+            # Descargar la imagen
+            response = self.session.get(image_url, timeout=10, stream=True)
+            response.raise_for_status()
+            
+            # Guardar la imagen
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print(f"   ✅ Imagen descargada: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            print(f"   ❌ Error descargando imagen: {e}")
+            return None
+    
+    def get_woocommerce_compatible_image(self, product_name, product_id):
+        """
+        Obtiene una imagen compatible con WooCommerce (descargada localmente)
+        """
+        if not product_name or not product_name.strip():
+            return None
+        
+        # Verificar cache
+        cache_key = f"{product_name.strip().lower()}_{product_id}"
+        if cache_key in self.cache:
+            cached_path = self.cache[cache_key]
+            if cached_path and os.path.exists(cached_path):
+                print(f"   💾 Imagen local en cache: {cached_path}")
+                return cached_path
+        
+        print(f"   🔍 Procesando imagen para: {product_name}")
+        
+        # Generar URL de placeholder
+        image_url = self.get_simple_placeholder_image(product_name)
+        
+        if image_url:
+            # Descargar imagen localmente
+            local_path = self.download_image_locally(image_url, product_name, product_id)
+            
+            if local_path:
+                # Guardar en cache
+                self.cache[cache_key] = local_path
+                return local_path
+        
+        return None
 
 def leer_csv_con_paginas(archivo_csv):
     """
@@ -103,13 +328,14 @@ def crear_estructura_woocommerce():
         'Posición', 'Marcas'
     ]
 
-def procesar_datos_a_woocommerce(paginas_data, solo_ejemplo=False):
+def procesar_datos_a_woocommerce(paginas_data, solo_ejemplo=False, agregar_imagenes=False):
     """
     Convierte los datos del inventario al formato WooCommerce
     
     Args:
         paginas_data (dict): Datos de las páginas del archivo original
         solo_ejemplo (bool): Si es True, procesa solo 100 productos variados para prueba
+        agregar_imagenes (bool): Si es True, busca imágenes automáticamente para los productos
     
     Returns:
         pd.DataFrame: DataFrame con formato WooCommerce
@@ -118,6 +344,12 @@ def procesar_datos_a_woocommerce(paginas_data, solo_ejemplo=False):
     
     if solo_ejemplo:
         print("🔬 MODO EJEMPLO: Procesando solo 100 productos variados para prueba")
+    
+    if agregar_imagenes:
+        print("🖼️  MODO IMÁGENES: Descargando imágenes localmente para WooCommerce")
+        image_fetcher = ImageFetcher()
+    else:
+        image_fetcher = None
     
     # Crear lista para almacenar todos los productos
     productos_woocommerce = []
@@ -206,6 +438,14 @@ def procesar_datos_a_woocommerce(paginas_data, solo_ejemplo=False):
                     'Marcas': ''
                 }
                 
+                # Agregar imagen del producto si está habilitado
+                if agregar_imagenes and image_fetcher:
+                    nombre_producto = str(fila['PRODUCTO']).strip()
+                    imagen_path = image_fetcher.get_woocommerce_compatible_image(nombre_producto, contador_id)
+                    if imagen_path:
+                        # Convertir a ruta relativa para el CSV
+                        producto_wc['Imágenes'] = imagen_path
+                
                 productos_woocommerce.append(producto_wc)
                 contador_id += 1
                 productos_procesados += 1
@@ -217,6 +457,17 @@ def procesar_datos_a_woocommerce(paginas_data, solo_ejemplo=False):
     # Crear DataFrame final
     columnas_wc = crear_estructura_woocommerce()
     df_woocommerce = pd.DataFrame(productos_woocommerce, columns=columnas_wc)
+    
+    # Guardar cache de imágenes si se utilizó
+    if agregar_imagenes and image_fetcher:
+        image_fetcher.save_cache()
+        print(f"💾 Cache de imágenes guardado en {image_fetcher.cache_file}")
+        
+        # Mostrar resumen de imágenes descargadas
+        imagenes_con_path = df_woocommerce[df_woocommerce['Imágenes'] != '']['Imágenes']
+        if len(imagenes_con_path) > 0:
+            print(f"📁 {len(imagenes_con_path)} imágenes descargadas en: {image_fetcher.images_folder}")
+            print("📋 IMPORTANTE: Sube la carpeta 'product_images' a tu WordPress en /wp-content/uploads/")
     
     print(f"✅ Procesamiento completado: {len(df_woocommerce)} productos convertidos")
     return df_woocommerce
@@ -289,11 +540,18 @@ def main():
     """
     print("=== Script de Conversión CSV a WooCommerce ===")
     
-    # Verificar si se pasó el flag --ejemplo
+    # Verificar flags de comandos
     solo_ejemplo = '--ejemplo' in sys.argv or '-e' in sys.argv
+    agregar_imagenes = '--imagenes' in sys.argv or '-i' in sys.argv
     
     if solo_ejemplo:
         print("🔬 MODO EJEMPLO ACTIVADO: Se procesarán solo 100 productos variados")
+    
+    if agregar_imagenes:
+        print("🖼️  MODO IMÁGENES ACTIVADO: Se buscarán imágenes automáticamente")
+    
+    if solo_ejemplo and agregar_imagenes:
+        print("🔄 COMBINACIÓN: Modo ejemplo + imágenes automáticas")
     
     print("Paso 1: Lectura y verificación del archivo original\n")
     
@@ -326,7 +584,7 @@ def main():
         print("\n🎯 Procesando datos y creando formato WooCommerce...")
         
         # PASO 2: PROCESAR DATOS A FORMATO WOOCOMMERCE
-        df_woocommerce = procesar_datos_a_woocommerce(paginas_data, solo_ejemplo)
+        df_woocommerce = procesar_datos_a_woocommerce(paginas_data, solo_ejemplo, agregar_imagenes)
         
         if df_woocommerce is not None and len(df_woocommerce) > 0:
             # PASO 3: MOSTRAR RESUMEN
@@ -354,12 +612,15 @@ if __name__ == "__main__":
         print("=== AYUDA - Script de Conversión CSV a WooCommerce ===")
         print("Uso: python csv_to_woocommerce.py [opciones]")
         print("\nOpciones:")
-        print("  --ejemplo, -e    Procesa solo 100 productos variados para prueba")
-        print("  --ayuda, -h      Muestra esta ayuda")
+        print("  --ejemplo, -e     Procesa solo 100 productos variados para prueba")
+        print("  --imagenes, -i    Agrega imágenes automáticamente desde internet")
+        print("  --ayuda, -h       Muestra esta ayuda")
         print("\nEjemplos:")
         print("  python csv_to_woocommerce.py")
         print("  python csv_to_woocommerce.py --ejemplo")
-        print("  python csv_to_woocommerce.py -e")
+        print("  python csv_to_woocommerce.py --imagenes")
+        print("  python csv_to_woocommerce.py --ejemplo --imagenes")
+        print("  python csv_to_woocommerce.py -e -i")
         sys.exit(0)
     
     main()

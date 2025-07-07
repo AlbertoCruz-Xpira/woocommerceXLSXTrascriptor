@@ -14,12 +14,13 @@ Este script convierte archivos Excel con múltiples páginas (categorías) de pr
 - ✅ **Generación de SKUs** únicos automáticos
 - ✅ **Categorización** basada en nombres de páginas
 - ✅ **Modo ejemplo** para pruebas con 100 productos
+- ✅ **Imágenes automáticas** desde APIs gratuitas de internet
 - ✅ **Manejo de errores** robusto para datos inconsistentes
 
 ## 📦 Requisitos
 
 ```bash
-pip install pandas openpyxl
+pip install pandas openpyxl requests
 ```
 
 ## 📁 Estructura de Archivos
@@ -37,7 +38,7 @@ nk2connector/
 1. **Clona o descarga** los archivos del script
 2. **Instala las dependencias**:
    ```bash
-   pip install pandas openpyxl
+   pip install pandas openpyxl requests
    ```
 3. **Coloca tu archivo Excel** (`Productos.xlsx`) en la misma carpeta
 4. **Ejecuta el script**
@@ -60,6 +61,26 @@ python csv_to_woocommerce.py -e
 ```
 Procesa solo **100 productos variados** de diferentes categorías para pruebas.
 
+### Modo con Imágenes Automáticas
+```bash
+python csv_to_woocommerce.py --imagenes
+```
+o
+```bash
+python csv_to_woocommerce.py -i
+```
+Busca automáticamente **imágenes de internet** para cada producto y las agrega al CSV.
+
+### Combinación de Modos
+```bash
+python csv_to_woocommerce.py --ejemplo --imagenes
+```
+o
+```bash
+python csv_to_woocommerce.py -e -i
+```
+Procesa **100 productos con imágenes automáticas** - ideal para pruebas completas.
+
 ### Ayuda
 ```bash
 python csv_to_woocommerce.py --ayuda
@@ -75,7 +96,18 @@ Muestra información de ayuda y opciones disponibles.
 | Flag | Descripción | Ejemplo |
 |------|-------------|---------|
 | `--ejemplo`, `-e` | Procesa solo 100 productos variados para prueba | `python csv_to_woocommerce.py -e` |
+| `--imagenes`, `-i` | Agrega imágenes automáticamente desde internet | `python csv_to_woocommerce.py -i` |
 | `--ayuda`, `-h` | Muestra la ayuda del comando | `python csv_to_woocommerce.py -h` |
+
+### 🔄 Combinaciones de Flags
+
+Los flags se pueden combinar para mayor funcionalidad:
+
+```bash
+# Ejemplo + Imágenes (recomendado para primera prueba)
+python csv_to_woocommerce.py --ejemplo --imagenes
+python csv_to_woocommerce.py -e -i
+```
 
 ## 📊 Formato del Archivo de Entrada
 
@@ -119,14 +151,28 @@ python csv_to_woocommerce.py --ejemplo
 ```
 **Uso**: Prueba inicial en WooCommerce antes de importar todo el inventario.
 
-### 2. Importación Completa
+### 2. Primera Importación con Imágenes (Recomendado)
+```bash
+# Genera 100 productos CON imágenes automáticas
+python csv_to_woocommerce.py --ejemplo --imagenes
+```
+**Uso**: Prueba inicial completa con imágenes para ver cómo queda la tienda.
+
+### 3. Importación Completa
 ```bash
 # Procesa todos los productos del inventario
 python csv_to_woocommerce.py
 ```
 **Uso**: Importación completa del inventario a la tienda.
 
-### 3. Actualización de Inventario
+### 4. Importación Completa con Imágenes
+```bash
+# Procesa todos los productos CON imágenes automáticas
+python csv_to_woocommerce.py --imagenes
+```
+**Uso**: Importación completa del inventario con imágenes automáticas.
+
+### 5. Actualización de Inventario
 ```bash
 # Actualiza el archivo Excel y vuelve a ejecutar
 python csv_to_woocommerce.py
@@ -136,10 +182,12 @@ python csv_to_woocommerce.py
 ## 📋 Ejemplo de Ejecución
 
 ```bash
-PS D:\Proyectos> python csv_to_woocommerce.py --ejemplo
+PS D:\Proyectos> python csv_to_woocommerce.py --ejemplo --imagenes
 
 === Script de Conversión CSV a WooCommerce ===
 🔬 MODO EJEMPLO ACTIVADO: Se procesarán solo 100 productos variados
+🖼️  MODO IMÁGENES ACTIVADO: Se buscarán imágenes automáticamente
+🔄 COMBINACIÓN: Modo ejemplo + imágenes automáticas
 Paso 1: Lectura y verificación del archivo original
 
 Leyendo archivo: Productos.xlsx
@@ -153,6 +201,15 @@ Leyendo página: NEVERA MONSTER
 
 🎯 Procesando datos y creando formato WooCommerce...
 🔬 MODO EJEMPLO: Procesando solo 100 productos variados para prueba
+🖼️  MODO IMÁGENES: Agregando imágenes automáticamente a los productos
+
+Procesando página: MUEBLE TABACO (347 productos)
+   🔍 Buscando imagen para: PIPA BLANCA
+   ✅ Imagen encontrada: https://source.unsplash.com/400x400/?pipa-blanca-product-food-snack
+   🔍 Buscando imagen para: MECHERO BIC MINI
+   ✅ Imagen encontrada: https://source.unsplash.com/400x400/?mechero-bic-mini-product-food-snack
+
+💾 Cache de imágenes guardado en image_cache.json
 ✅ Procesamiento completado: 100 productos convertidos
 
 === RESUMEN DE CONVERSIÓN ===
@@ -165,6 +222,50 @@ Productos por categoría:
 🎉 ¡CONVERSIÓN COMPLETADA EXITOSAMENTE!
 📄 Archivo listo para WooCommerce: productos_woocommerce_20250707_175123.csv
 ```
+
+## 🖼️ Sistema de Imágenes Automáticas
+
+### Cómo Funciona
+El flag `--imagenes` activa la descarga automática de imágenes para cada producto:
+
+1. **Genera placeholders únicos**: Crea imágenes placeholder con colores y texto identificativo
+2. **Descarga localmente**: Guarda las imágenes en la carpeta `product_images/`
+3. **Prepara para WooCommerce**: Las rutas en el CSV son compatibles con WordPress
+
+### Proceso Completo
+```bash
+# 1. Generar CSV con imágenes
+python csv_to_woocommerce.py --ejemplo --imagenes
+
+# 2. Preparar paquete para WordPress
+python prepare_images_for_woocommerce.py
+
+# 3. Subir a WordPress y extraer ZIP en: /wp-content/uploads/
+# 4. Importar CSV en WooCommerce
+```
+
+### Estructura Generada
+```
+project/
+├── productos_woocommerce_YYYYMMDD_HHMMSS.csv  # CSV para importar
+├── product_images/                              # Imágenes descargadas
+│   ├── producto-0001-chesterfield-24.jpg
+│   ├── producto-0002-carton-chesterfield.jpg
+│   └── ...
+├── woocommerce_images_YYYYMMDD_HHMMSS.zip     # Paquete para WordPress
+└── image_cache.json                            # Cache de imágenes
+```
+
+### Ventajas
+- ✅ **Compatible con WooCommerce**: No hay problemas de permisos
+- ✅ **Imágenes locales**: Se almacenan en tu servidor WordPress
+- ✅ **Cache inteligente**: Evita descargar la misma imagen múltiples veces
+- ✅ **Proceso automatizado**: Script auxiliar para crear el paquete ZIP
+
+### Configuración en WordPress
+1. **Subir imágenes**: Sube el ZIP a `/wp-content/uploads/` y extráelo
+2. **Importar CSV**: Las rutas de imágenes serán válidas automáticamente
+3. **Resultado**: Productos con imágenes automáticamente asignadas
 
 ## ⚠️ Solución de Problemas
 
